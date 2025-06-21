@@ -1,0 +1,38 @@
+// Prisma schema for floor plan rendering app
+// User, Project, FloorPlan models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  name      String?
+  image     String?
+  projects  Project[]
+}
+
+model Project {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  user        User?      @relation(fields: [userId], references: [id])
+  userId      String?    @db.ObjectId
+  floorPlans  FloorPlan[]
+  createdAt   DateTime   @default(now())
+}
+
+model FloorPlan {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?  @db.ObjectId
+  name        String
+  imageUrl    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+} 
