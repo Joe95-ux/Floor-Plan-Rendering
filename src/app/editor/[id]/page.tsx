@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Stage, Layer, Rect, Line, Text, Group } from "react-konva";
+import { Stage, Layer, Rect, Line, Text, Group, Image as KonvaImage } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Stage as KonvaStage } from "konva/lib/Stage";
+import useImage from "use-image";
 
 interface FloorPlan {
   id: string;
@@ -37,6 +38,7 @@ export default function EditorPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layerId: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const stageRef = useRef<KonvaStage | null>(null);
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -44,6 +46,11 @@ export default function EditorPage() {
       if (res.ok) {
         const data = await res.json();
         setFloorPlan(data);
+        if (data.imageUrl) {
+          const img = new window.Image();
+          img.src = data.imageUrl;
+          img.onload = () => setImage(img);
+        }
       }
     };
     fetchFloorPlan();
@@ -92,7 +99,15 @@ export default function EditorPage() {
           <Layer>
             {floorPlan && (
               <Group>
-                {/* TODO: Render floor plan image as background using Konva.Image */}
+                {image && (
+                  <KonvaImage
+                    image={image}
+                    x={0}
+                    y={0}
+                    width={600}
+                    height={400}
+                  />
+                )}
               </Group>
             )}
             {layers.map(layer => {
