@@ -42,6 +42,8 @@ export default function EditorPage() {
   const [scalingMode, setScalingMode] = useState(false);
   const [scalePoints, setScalePoints] = useState<{ x: number; y: number }[]>([]);
   const [scale, setScale] = useState<number | null>(null);
+  const [autoScalingMode, setAutoScalingMode] = useState(false);
+  const [autoScaleValue, setAutoScaleValue] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -72,11 +74,34 @@ export default function EditorPage() {
       }
       return;
     }
+    if (autoScalingMode && autoScaleValue !== null && e) {
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          setScalePoints(prev => [...prev, pointer]);
+        }
+      }
+      return;
+    }
     setSelected(null);
     setContextMenu(null);
   };
 
   const handleLayerClick = (layerId: string) => {
+    if (autoScalingMode) {
+      const layer = layers.find(l => l.id === layerId);
+      if (layer?.type === "text") {
+        // Mock OCR: extract number from text
+        const match = layer.name.match(/([\d.']+)/);
+        if (match) {
+          let value = match[1].replace("'", "");
+          setAutoScaleValue(Number(value));
+          setScalePoints([]);
+        }
+      }
+      return;
+    }
     setSelected(layerId);
     setContextMenu(null);
   };
@@ -106,7 +131,17 @@ export default function EditorPage() {
       setScalingMode(false);
       setScalePoints([]);
     }
-  }, [scalingMode, scalePoints]);
+    if (autoScalingMode && autoScaleValue && scalePoints.length === 2) {
+      const [p1, p2] = scalePoints;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const pixelDist = Math.sqrt(dx * dx + dy * dy);
+      setScale(pixelDist / autoScaleValue);
+      setAutoScalingMode(false);
+      setAutoScaleValue(null);
+      setScalePoints([]);
+    }
+  }, [scalingMode, autoScalingMode, scalePoints, autoScaleValue]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -121,13 +156,31 @@ export default function EditorPage() {
           className={`px-3 py-1 rounded ${scalingMode ? "bg-blue-700 text-white" : "bg-blue-100 text-blue-700"}`}
           onClick={() => {
             setScalingMode(!scalingMode);
+            setAutoScalingMode(false);
             setScalePoints([]);
           }}
         >
           {scalingMode ? "Cancel Scaling" : "Manual Scale"}
         </button>
+        <button
+          className={`px-3 py-1 rounded ${autoScalingMode ? "bg-green-700 text-white" : "bg-green-100 text-green-700"}`}
+          onClick={() => {
+            setAutoScalingMode(!autoScalingMode);
+            setScalingMode(false);
+            setAutoScaleValue(null);
+            setScalePoints([]);
+          }}
+        >
+          {autoScalingMode ? "Cancel Auto Scale" : "Auto Scale (OCR)"}
+        </button>
         {scale && (
           <span className="text-sm text-gray-700">Scale: {scale.toFixed(2)} px/m</span>
+        )}
+        {autoScalingMode && !autoScaleValue && (
+          <span className="text-sm text-green-700">Click a dimension label</span>
+        )}
+        {autoScalingMode && autoScaleValue && (
+          <span className="text-sm text-green-700">Now click two points for this value</span>
         )}
       </div>
       <div className="relative bg-white rounded shadow-lg mx-auto" style={{ width: 600, height: 400 }}>
