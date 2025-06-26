@@ -39,6 +39,9 @@ export default function EditorPage() {
   const [renameValue, setRenameValue] = useState("");
   const stageRef = useRef<KonvaStage | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [scalingMode, setScalingMode] = useState(false);
+  const [scalePoints, setScalePoints] = useState<{ x: number; y: number }[]>([]);
+  const [scale, setScale] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -58,7 +61,17 @@ export default function EditorPage() {
     setLayers(MOCK_LAYERS);
   }, [id]);
 
-  const handleStageClick = () => {
+  const handleStageClick = (e?: any) => {
+    if (scalingMode && e) {
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          setScalePoints(prev => [...prev, pointer]);
+        }
+      }
+      return;
+    }
     setSelected(null);
     setContextMenu(null);
   };
@@ -80,6 +93,21 @@ export default function EditorPage() {
     setContextMenu(null);
   };
 
+  useEffect(() => {
+    if (scalingMode && scalePoints.length === 2) {
+      const [p1, p2] = scalePoints;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const pixelDist = Math.sqrt(dx * dx + dy * dy);
+      const realDist = window.prompt("Enter real-world distance between points (in meters):", "1.0");
+      if (realDist && !isNaN(Number(realDist)) && Number(realDist) > 0) {
+        setScale(pixelDist / Number(realDist));
+      }
+      setScalingMode(false);
+      setScalePoints([]);
+    }
+  }, [scalingMode, scalePoints]);
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-4">Floor Plan Editor</h1>
@@ -88,6 +116,20 @@ export default function EditorPage() {
           <span className="font-semibold">Project:</span> {floorPlan.name}
         </div>
       )}
+      <div className="mb-2 flex items-center gap-4">
+        <button
+          className={`px-3 py-1 rounded ${scalingMode ? "bg-blue-700 text-white" : "bg-blue-100 text-blue-700"}`}
+          onClick={() => {
+            setScalingMode(!scalingMode);
+            setScalePoints([]);
+          }}
+        >
+          {scalingMode ? "Cancel Scaling" : "Manual Scale"}
+        </button>
+        {scale && (
+          <span className="text-sm text-gray-700">Scale: {scale.toFixed(2)} px/m</span>
+        )}
+      </div>
       <div className="relative bg-white rounded shadow-lg mx-auto" style={{ width: 600, height: 400 }}>
         <Stage
           width={600}
@@ -107,6 +149,28 @@ export default function EditorPage() {
                     width={600}
                     height={400}
                   />
+                )}
+                {/* Draw scale points and line if in scaling mode */}
+                {scalingMode && scalePoints.length > 0 && (
+                  <>
+                    {scalePoints.map((pt, idx) => (
+                      <Rect
+                        key={idx}
+                        x={pt.x - 4}
+                        y={pt.y - 4}
+                        width={8}
+                        height={8}
+                        fill="#f59e42"
+                      />
+                    ))}
+                    {scalePoints.length === 2 && (
+                      <Line
+                        points={[scalePoints[0].x, scalePoints[0].y, scalePoints[1].x, scalePoints[1].y]}
+                        stroke="#f59e42"
+                        strokeWidth={3}
+                      />
+                    )}
+                  </>
                 )}
               </Group>
             )}
