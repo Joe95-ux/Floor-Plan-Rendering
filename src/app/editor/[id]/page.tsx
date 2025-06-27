@@ -29,6 +29,13 @@ const MOCK_LAYERS: LayerData[] = [
   { id: "t1", type: "text", name: "12'-0\"", x: 120, y: 90 },
 ];
 
+const MOCK_AI_LAYERS: LayerData[] = [
+  { id: "r2", type: "room", name: "Living Room", x: 80, y: 80, width: 220, height: 160 },
+  { id: "w2", type: "wall", name: "Wall 2", x: 80, y: 80, points: [80, 80, 300, 80] },
+  { id: "f2", type: "furniture", name: "Sofa", x: 120, y: 200, width: 80, height: 30 },
+  { id: "t2", type: "text", name: "5.5", x: 110, y: 70 },
+];
+
 export default function EditorPage() {
   const params = useParams();
   const id = params?.id as string;
@@ -44,6 +51,8 @@ export default function EditorPage() {
   const [scale, setScale] = useState<number | null>(null);
   const [autoScalingMode, setAutoScalingMode] = useState(false);
   const [autoScaleValue, setAutoScaleValue] = useState<number | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiDone, setAiDone] = useState(false);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -118,6 +127,17 @@ export default function EditorPage() {
     setContextMenu(null);
   };
 
+  const runAISegmentation = () => {
+    setAiLoading(true);
+    setAiDone(false);
+    setTimeout(() => {
+      setLayers(MOCK_AI_LAYERS);
+      setAiLoading(false);
+      setAiDone(true);
+      setTimeout(() => setAiDone(false), 2000);
+    }, 1500);
+  };
+
   useEffect(() => {
     if (scalingMode && scalePoints.length === 2) {
       const [p1, p2] = scalePoints;
@@ -173,6 +193,14 @@ export default function EditorPage() {
         >
           {autoScalingMode ? "Cancel Auto Scale" : "Auto Scale (OCR)"}
         </button>
+        <button
+          className="px-3 py-1 rounded bg-purple-600 text-white"
+          onClick={runAISegmentation}
+          disabled={aiLoading}
+        >
+          {aiLoading ? "Running AI..." : "Run AI Segmentation"}
+        </button>
+        {aiDone && <span className="text-purple-700">Segmentation complete!</span>}
         {scale && (
           <span className="text-sm text-gray-700">Scale: {scale.toFixed(2)} px/m</span>
         )}
