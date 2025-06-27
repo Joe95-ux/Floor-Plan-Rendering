@@ -3,7 +3,7 @@ import { useParams } from "next/navigation";
 import { Stage, Layer, Rect, Line, Text, Group, Image as KonvaImage } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Stage as KonvaStage } from "konva/lib/Stage";
-import useImage from "use-image";
+import { saveAs } from "file-saver";
 
 interface FloorPlan {
   id: string;
@@ -53,6 +53,7 @@ export default function EditorPage() {
   const [autoScaleValue, setAutoScaleValue] = useState<number | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiDone, setAiDone] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -72,7 +73,7 @@ export default function EditorPage() {
     setLayers(MOCK_LAYERS);
   }, [id]);
 
-  const handleStageClick = (e?: any) => {
+  const handleStageClick = (e?: KonvaEventObject<MouseEvent>) => {
     if (scalingMode && e) {
       const stage = stageRef.current;
       if (stage) {
@@ -104,7 +105,7 @@ export default function EditorPage() {
         // Mock OCR: extract number from text
         const match = layer.name.match(/([\d.']+)/);
         if (match) {
-          let value = match[1].replace("'", "");
+          const value = match[1].replace("'", "");
           setAutoScaleValue(Number(value));
           setScalePoints([]);
         }
@@ -163,6 +164,39 @@ export default function EditorPage() {
     }
   }, [scalingMode, autoScalingMode, scalePoints, autoScaleValue]);
 
+  const exportPNG = () => {
+    if (stageRef.current) {
+      const uri = stageRef.current.toDataURL({ pixelRatio: 2 });
+      const link = document.createElement("a");
+      link.download = `${floorPlan?.name || "floorplan"}.png`;
+      link.href = uri;
+      link.click();
+      setExportMsg("PNG exported!");
+    }
+  };
+
+  const exportJSON = () => {
+    const data = {
+      floorPlan,
+      layers,
+      scale,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    saveAs(blob, `${floorPlan?.name || "floorplan"}.json`);
+    setExportMsg("JSON exported!");
+  };
+
+  const exportCSV = () => {
+    const roomLayers = layers.filter(l => l.type === "room");
+    let csv = "Room Name, X, Y, Width, Height\n";
+    roomLayers.forEach(l => {
+      csv += `${l.name},${l.x},${l.y},${l.width || ""},${l.height || ""}\n`;
+    });
+    const blob = new Blob([csv], { type: "text/csv" });
+    saveAs(blob, `${floorPlan?.name || "floorplan"}_rooms.csv`);
+    setExportMsg("CSV exported!");
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-4">Floor Plan Editor</h1>
@@ -210,6 +244,12 @@ export default function EditorPage() {
         {autoScalingMode && autoScaleValue && (
           <span className="text-sm text-green-700">Now click two points for this value</span>
         )}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportPNG}>Export PNG</button>
+        <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportJSON}>Export JSON</button>
+        <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportCSV}>Export CSV</button>
+        {exportMsg && <span className="text-green-700 ml-2">{exportMsg}</span>}
       </div>
       <div className="relative bg-white rounded shadow-lg mx-auto" style={{ width: 600, height: 400 }}>
         <Stage
