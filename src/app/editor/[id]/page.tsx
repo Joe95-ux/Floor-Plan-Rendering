@@ -36,6 +36,36 @@ const MOCK_AI_LAYERS: LayerData[] = [
   { id: "t2", type: "text", name: "5.5", x: 110, y: 70 },
 ];
 
+const STYLE_TEMPLATES = [
+  {
+    name: "Modern",
+    roomFill: "#e0e7ef",
+    roomStroke: "#3b82f6",
+    wallStroke: "#6366f1",
+    furnitureFill: "#f3f4f6",
+    furnitureStroke: "#f59e42",
+    textFill: "#222",
+  },
+  {
+    name: "Line Art",
+    roomFill: "#fff",
+    roomStroke: "#222",
+    wallStroke: "#222",
+    furnitureFill: "#fff",
+    furnitureStroke: "#222",
+    textFill: "#222",
+  },
+  {
+    name: "Scandinavian",
+    roomFill: "#f7fafc",
+    roomStroke: "#a3a3a3",
+    wallStroke: "#a3a3a3",
+    furnitureFill: "#fef9c3",
+    furnitureStroke: "#b45309",
+    textFill: "#374151",
+  },
+];
+
 export default function EditorPage() {
   const params = useParams();
   const id = params?.id as string;
@@ -54,6 +84,10 @@ export default function EditorPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiDone, setAiDone] = useState(false);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [styleIdx, setStyleIdx] = useState(0);
+  const style = STYLE_TEMPLATES[styleIdx];
+  const [drawRoomMode, setDrawRoomMode] = useState(false);
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -74,6 +108,39 @@ export default function EditorPage() {
   }, [id]);
 
   const handleStageClick = (e?: KonvaEventObject<MouseEvent>) => {
+    if (drawRoomMode && e) {
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          if (!drawStart) {
+            setDrawStart(pointer);
+          } else {
+            // Create new room layer
+            const width = Math.abs(pointer.x - drawStart.x);
+            const height = Math.abs(pointer.y - drawStart.y);
+            const x = Math.min(pointer.x, drawStart.x);
+            const y = Math.min(pointer.y, drawStart.y);
+            setLayers(prev => [
+              ...prev,
+              {
+                id: `room_${Date.now()}`,
+                type: "room",
+                name: `Room ${prev.filter(l => l.type === "room").length + 1}`,
+                x,
+                y,
+                width,
+                height,
+              },
+            ]);
+            setDrawRoomMode(false);
+            setDrawStart(null);
+            setExportMsg("Room added");
+          }
+        }
+      }
+      return;
+    }
     if (scalingMode && e) {
       const stage = stageRef.current;
       if (stage) {
@@ -197,6 +264,14 @@ export default function EditorPage() {
     setExportMsg("CSV exported!");
   };
 
+  const deleteSelectedLayer = () => {
+    if (selected) {
+      setLayers(layers.filter(l => l.id !== selected));
+      setSelected(null);
+      setExportMsg("Layer deleted");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-4">Floor Plan Editor</h1>
@@ -246,6 +321,34 @@ export default function EditorPage() {
         )}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <label className="font-semibold mr-2">Style:</label>
+        <select
+          className="border rounded p-1 mr-2"
+          value={styleIdx}
+          onChange={e => setStyleIdx(Number(e.target.value))}
+        >
+          {STYLE_TEMPLATES.map((tpl, idx) => (
+            <option key={tpl.name} value={idx}>{tpl.name}</option>
+          ))}
+        </select>
+        <button
+          className={`px-3 py-1 rounded ${drawRoomMode ? "bg-yellow-600 text-white" : "bg-yellow-100 text-yellow-700"}`}
+          onClick={() => {
+            setDrawRoomMode(!drawRoomMode);
+            setDrawStart(null);
+            setScalingMode(false);
+            setAutoScalingMode(false);
+          }}
+        >
+          {drawRoomMode ? "Cancel Draw" : "Draw Room"}
+        </button>
+        <button
+          className="px-3 py-1 rounded bg-red-600 text-white"
+          onClick={deleteSelectedLayer}
+          disabled={!selected}
+        >
+          Delete Selected Layer
+        </button>
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportPNG}>Export PNG</button>
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportJSON}>Export JSON</button>
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportCSV}>Export CSV</button>
@@ -304,8 +407,8 @@ export default function EditorPage() {
                     y={layer.y}
                     width={layer.width}
                     height={layer.height}
-                    fill={selected === layer.id ? "#c7e0ff" : "#e0e7ef"}
-                    stroke="#3b82f6"
+                    fill={selected === layer.id ? "#c7e0ff" : style.roomFill}
+                    stroke={style.roomStroke}
                     strokeWidth={2}
                     onClick={() => handleLayerClick(layer.id)}
                     onContextMenu={e => handleLayerContextMenu(e, layer.id)}
@@ -317,7 +420,7 @@ export default function EditorPage() {
                   <Line
                     key={layer.id}
                     points={layer.points || []}
-                    stroke="#6366f1"
+                    stroke={style.wallStroke}
                     strokeWidth={4}
                     lineCap="round"
                     onClick={() => handleLayerClick(layer.id)}
@@ -333,8 +436,8 @@ export default function EditorPage() {
                     y={layer.y}
                     width={layer.width}
                     height={layer.height}
-                    fill={selected === layer.id ? "#fef08a" : "#f3f4f6"}
-                    stroke="#f59e42"
+                    fill={selected === layer.id ? "#fef08a" : style.furnitureFill}
+                    stroke={style.furnitureStroke}
                     strokeWidth={2}
                     onClick={() => handleLayerClick(layer.id)}
                     onContextMenu={e => handleLayerContextMenu(e, layer.id)}
@@ -349,7 +452,7 @@ export default function EditorPage() {
                     y={layer.y}
                     text={layer.name}
                     fontSize={18}
-                    fill="#222"
+                    fill={style.textFill}
                     onClick={() => handleLayerClick(layer.id)}
                     onContextMenu={e => handleLayerContextMenu(e, layer.id)}
                   />
