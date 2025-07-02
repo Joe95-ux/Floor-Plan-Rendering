@@ -13,7 +13,7 @@ interface FloorPlan {
 
 interface LayerData {
   id: string;
-  type: "room" | "wall" | "furniture" | "text";
+  type: "room" | "wall" | "furniture" | "text" | "custom";
   name: string;
   x: number;
   y: number;
@@ -88,6 +88,8 @@ export default function EditorPage() {
   const style = STYLE_TEMPLATES[styleIdx];
   const [drawRoomMode, setDrawRoomMode] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [lassoMode, setLassoMode] = useState(false);
+  const [lassoPoints, setLassoPoints] = useState<{ x: number; y: number }[]>([]);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -108,6 +110,16 @@ export default function EditorPage() {
   }, [id]);
 
   const handleStageClick = (e?: KonvaEventObject<MouseEvent>) => {
+    if (lassoMode && e) {
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          setLassoPoints(prev => [...prev, pointer]);
+        }
+      }
+      return;
+    }
     if (drawRoomMode && e) {
       const stage = stageRef.current;
       if (stage) {
@@ -272,6 +284,25 @@ export default function EditorPage() {
     }
   };
 
+  const handleStageDblClick = () => {
+    if (lassoMode && lassoPoints.length > 2) {
+      setLayers(prev => [
+        ...prev,
+        {
+          id: `custom_${Date.now()}`,
+          type: "custom",
+          name: `Custom Region ${prev.filter(l => l.type === "custom").length + 1}`,
+          x: 0,
+          y: 0,
+          points: lassoPoints.flatMap(pt => [pt.x, pt.y]),
+        },
+      ]);
+      setLassoMode(false);
+      setLassoPoints([]);
+      setExportMsg("Custom region added");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-4">Floor Plan Editor</h1>
@@ -352,6 +383,26 @@ export default function EditorPage() {
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportPNG}>Export PNG</button>
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportJSON}>Export JSON</button>
         <button className="px-3 py-1 rounded bg-gray-700 text-white" onClick={exportCSV}>Export CSV</button>
+        <button
+          className={`px-3 py-1 rounded ${lassoMode ? "bg-pink-600 text-white" : "bg-pink-100 text-pink-700"}`}
+          onClick={() => {
+            setLassoMode(!lassoMode);
+            setLassoPoints([]);
+            setDrawRoomMode(false);
+            setScalingMode(false);
+            setAutoScalingMode(false);
+          }}
+        >
+          {lassoMode ? "Cancel Lasso" : "Lasso Tool"}
+        </button>
+        {lassoMode && lassoPoints.length > 2 && (
+          <button
+            className="px-2 py-1 rounded bg-pink-600 text-white"
+            onClick={handleStageDblClick}
+          >
+            Finish
+          </button>
+        )}
         {exportMsg && <span className="text-green-700 ml-2">{exportMsg}</span>}
       </div>
       <div className="relative bg-white rounded shadow-lg mx-auto" style={{ width: 600, height: 400 }}>
@@ -360,6 +411,7 @@ export default function EditorPage() {
           height={400}
           ref={stageRef}
           onClick={handleStageClick}
+          onDblClick={handleStageDblClick}
           className="cursor-crosshair"
         >
           <Layer>
@@ -458,8 +510,42 @@ export default function EditorPage() {
                   />
                 );
               }
+              if (layer.type === "custom") {
+                return (
+                  <Line
+                    key={layer.id}
+                    points={layer.points || []}
+                    closed
+                    fill={selected === layer.id ? "#fbcfe8" : style.roomFill}
+                    stroke={style.roomStroke}
+                    strokeWidth={2}
+                    onClick={() => handleLayerClick(layer.id)}
+                    onContextMenu={e => handleLayerContextMenu(e, layer.id)}
+                  />
+                );
+              }
               return null;
             })}
+            {/* Lasso drawing overlay */}
+            {lassoMode && lassoPoints.length > 0 && (
+              <>
+                <Line
+                  points={lassoPoints.flatMap(pt => [pt.x, pt.y])}
+                  stroke="#ec4899"
+                  strokeWidth={2}
+                />
+                {lassoPoints.map((pt, idx) => (
+                  <Rect
+                    key={idx}
+                    x={pt.x - 3}
+                    y={pt.y - 3}
+                    width={6}
+                    height={6}
+                    fill="#ec4899"
+                  />
+                ))}
+              </>
+            )}
           </Layer>
         </Stage>
         {contextMenu && (

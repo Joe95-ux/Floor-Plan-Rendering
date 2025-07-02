@@ -6,6 +6,14 @@ import prisma from "@/lib/prisma";
 
 const handler = NextAuth({
   adapter: PrismaAdapter(prisma),
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+  },
+  pages: {
+    signIn: "/login",
+    error: "/login",
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -16,9 +24,6 @@ const handler = NextAuth({
       from: process.env.EMAIL_FROM!,
     }),
   ],
-  session: {
-    strategy: "jwt",
-  },
   callbacks: {
     async session({ session, user }) {
       if (session.user) {
