@@ -4,6 +4,7 @@ import { Stage, Layer, Rect, Line, Text, Group, Image as KonvaImage } from "reac
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Stage as KonvaStage } from "konva/lib/Stage";
 import { saveAs } from "file-saver";
+import { HexColorPicker } from "react-colorful";
 
 interface FloorPlan {
   id: string;
@@ -90,6 +91,10 @@ export default function EditorPage() {
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [lassoMode, setLassoMode] = useState(false);
   const [lassoPoints, setLassoPoints] = useState<{ x: number; y: number }[]>([]);
+  const [vertexDragIdx, setVertexDragIdx] = useState<number | null>(null);
+  const [customColor, setCustomColor] = useState<string>("#fbcfe8");
+  const [subtractMode, setSubtractMode] = useState(false);
+  const [subtractPoints, setSubtractPoints] = useState<{ x: number; y: number }[]>([]);
 
   useEffect(() => {
     const fetchFloorPlan = async () => {
@@ -303,6 +308,33 @@ export default function EditorPage() {
     }
   };
 
+  const handleVertexDragMove = (idx: number, pos: { x: number; y: number }) => {
+    setLayers(layers => layers.map(l => {
+      if (l.id === selected && l.type === "custom" && l.points) {
+        const newPoints = [...l.points];
+        newPoints[idx * 2] = pos.x;
+        newPoints[idx * 2 + 1] = pos.y;
+        return { ...l, points: newPoints };
+      }
+      return l;
+    }));
+  };
+
+  const handleColorChange = (color: string) => {
+    setCustomColor(color);
+    setLayers(layers => layers.map(l => l.id === selected && l.type === "custom" ? { ...l, fill: color } : l));
+    setExportMsg("Color changed");
+  };
+
+  const handleSubtractFinish = () => {
+    // For demo: just remove the selected region (simulate subtraction)
+    setLayers(layers => layers.filter(l => l.id !== selected));
+    setSubtractMode(false);
+    setSubtractPoints([]);
+    setSelected(null);
+    setExportMsg("Region subtracted (demo)");
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-4">Floor Plan Editor</h1>
@@ -410,8 +442,14 @@ export default function EditorPage() {
           width={600}
           height={400}
           ref={stageRef}
-          onClick={handleStageClick}
-          onDblClick={handleStageDblClick}
+          onClick={subtractMode ? (e => {
+            const stage = stageRef.current;
+            if (stage) {
+              const pointer = stage.getPointerPosition();
+              if (pointer) setSubtractPoints(prev => [...prev, pointer]);
+            }
+          }) : handleStageClick}
+          onDblClick={subtractMode ? handleSubtractFinish : handleStageDblClick}
           className="cursor-crosshair"
         >
           <Layer>
@@ -511,17 +549,37 @@ export default function EditorPage() {
                 );
               }
               if (layer.type === "custom") {
+                const isSelected = selected === layer.id;
                 return (
-                  <Line
-                    key={layer.id}
-                    points={layer.points || []}
-                    closed
-                    fill={selected === layer.id ? "#fbcfe8" : style.roomFill}
-                    stroke={style.roomStroke}
-                    strokeWidth={2}
-                    onClick={() => handleLayerClick(layer.id)}
-                    onContextMenu={e => handleLayerContextMenu(e, layer.id)}
-                  />
+                  <React.Fragment key={layer.id}>
+                    <Line
+                      points={layer.points || []}
+                      closed
+                      fill={isSelected ? (layer.fill || customColor) : style.roomFill}
+                      stroke={style.roomStroke}
+                      strokeWidth={2}
+                      onClick={() => handleLayerClick(layer.id)}
+                      onContextMenu={e => handleLayerContextMenu(e, layer.id)}
+                    />
+                    {/* Vertex handles */}
+                    {isSelected && layer.points && layer.points.length >= 6 && layer.points.map((val, idx) => idx % 2 === 0 && (
+                      <Rect
+                        key={idx}
+                        x={layer.points![idx] - 6}
+                        y={layer.points![idx + 1] - 6}
+                        width={12}
+                        height={12}
+                        fill="#f472b6"
+                        stroke="#be185d"
+                        strokeWidth={2}
+                        draggable
+                        onDragMove={e => handleVertexDragMove(idx / 2, e.target.position())}
+                        onMouseDown={() => setVertexDragIdx(idx / 2)}
+                        onMouseUp={() => setVertexDragIdx(null)}
+                        style={{ cursor: "pointer" }}
+                      />
+                    ))}
+                  </React.Fragment>
                 );
               }
               return null;
@@ -551,21 +609,74 @@ export default function EditorPage() {
         {contextMenu && (
           <div
             className="absolute bg-white border rounded shadow p-2 z-50"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            style={{ left: contextMenu.x, top: contextMenu.y, minWidth: 180 }}
           >
-            <div className="mb-2 font-medium">Rename Layer</div>
-            <input
-              className="border rounded p-1 mb-2 w-full"
-              value={renameValue}
-              onChange={e => setRenameValue(e.target.value)}
-            />
+            <div className="mb-2 font-medium">Layer Actions</div>
             <button
-              className="bg-blue-600 text-white rounded px-2 py-1 text-sm"
-              onClick={handleRename}
+              className="block w-full text-left px-2 py-1 hover:bg-gray-100 rounded"
+              onClick={() => setContextMenu(null)}
             >
-              Save
+              Close
             </button>
+            <button
+              className="block w-full text-left px-2 py-1 hover:bg-gray-100 rounded"
+              onClick={() => { setRenameValue(layers.find(l => l.id === contextMenu.layerId)?.name || ""); }}
+            >
+              Rename
+            </button>
+            <button
+              className="block w-full text-left px-2 py-1 hover:bg-gray-100 rounded text-red-600"
+              onClick={() => { deleteSelectedLayer(); setContextMenu(null); }}
+            >
+              Delete
+            </button>
+            {layers.find(l => l.id === contextMenu.layerId)?.type === "custom" && (
+              <>
+                <div className="mt-2 mb-1 text-xs text-gray-500">Custom Region Color</div>
+                <HexColorPicker color={customColor} onChange={handleColorChange} />
+                <button
+                  className="block w-full text-left px-2 py-1 hover:bg-pink-100 rounded text-pink-700 mt-2"
+                  onClick={() => { setSubtractMode(true); setContextMenu(null); }}
+                >
+                  Start Subtract Region
+                </button>
+              </>
+            )}
+            <div className="mt-2">
+              <button
+                className="bg-blue-600 text-white rounded px-2 py-1 text-sm w-full"
+                onClick={() => { handleRename(); setContextMenu(null); }}
+              >
+                Save Rename
+              </button>
+            </div>
           </div>
+        )}
+        {/* Subtract region drawing overlay */}
+        {subtractMode && (
+          <>
+            <Line
+              points={subtractPoints.flatMap(pt => [pt.x, pt.y])}
+              stroke="#be185d"
+              strokeWidth={2}
+            />
+            {subtractPoints.map((pt, idx) => (
+              <Rect
+                key={idx}
+                x={pt.x - 3}
+                y={pt.y - 3}
+                width={6}
+                height={6}
+                fill="#be185d"
+              />
+            ))}
+            <button
+              className="absolute top-2 right-2 bg-pink-700 text-white px-3 py-1 rounded"
+              onClick={handleSubtractFinish}
+            >
+              Finish Subtract (Demo)
+            </button>
+          </>
         )}
       </div>
     </div>
